@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#ffffff">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="HK Parking">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <title>HK Parking Live</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; overflow: hidden; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif; background: #f0f0f0; }
+
+    #map { position: absolute; inset: 0; }
+
+    /* ── Popup overrides ── */
+    .leaflet-popup-content-wrapper {
+      border-radius: 16px !important;
+      padding: 0 !important;
+      box-shadow: 0 6px 32px rgba(0,0,0,0.16) !important;
+      border: none !important;
+    }
+    .leaflet-popup-content { margin: 18px 18px 16px !important; }
+    .leaflet-popup-tip-container { display: none !important; }
+    .leaflet-popup-close-button { color: #bbb !important; font-size: 18px !important; top: 10px !important; right: 12px !important; }
+
+    /* ── Top bar – vehicle tabs ── */
+    #top-bar {
+      position: fixed;
+      top: 16px; left: 50%; transform: translateX(-50%);
+      z-index: 1000;
+      background: rgba(255,255,255,0.96);
+      backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+      border-radius: 50px;
+      padding: 5px;
+      display: flex; gap: 2px;
+      box-shadow: 0 2px 20px rgba(0,0,0,0.13);
+    }
+    .v-btn {
+      padding: 7px 16px; border: none; border-radius: 50px;
+      cursor: pointer; font-size: 13px; font-weight: 500;
+      background: transparent; color: #999;
+      transition: all 0.18s ease; white-space: nowrap;
+    }
+    .v-btn:hover { color: #333; }
+    .v-btn.active { background: #111; color: #fff; }
+
+    /* ── Bottom bar ── */
+    #bottom-bar {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+      z-index: 1000;
+      display: flex; align-items: center; gap: 10px; white-space: nowrap;
+    }
+    .glass-pill {
+      background: rgba(255,255,255,0.96);
+      backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+      box-shadow: 0 2px 16px rgba(0,0,0,0.12);
+    }
+    #legend {
+      border-radius: 50px; padding: 9px 16px;
+      display: flex; gap: 14px; align-items: center;
+      font-size: 12px; color: #666;
+    }
+    .legend-item { display: flex; align-items: center; gap: 6px; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+
+    #status-pill {
+      border-radius: 50px; padding: 9px 14px;
+      font-size: 12px; color: #999;
+      display: flex; align-items: center; gap: 7px;
+    }
+    .live-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: #22c55e;
+      animation: blink 2.2s ease-in-out infinite;
+    }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
+
+    /* ── Zoom hint ── */
+    #zoom-hint {
+      position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
+      z-index: 1000;
+      background: rgba(0,0,0,0.65);
+      color: #fff; font-size: 12px;
+      padding: 7px 14px; border-radius: 50px;
+      pointer-events: none;
+      opacity: 0; transition: opacity 0.3s;
+    }
+    #zoom-hint.visible { opacity: 1; }
+
+    /* ── Locate button ── */
+    #locate-btn {
+      position: fixed; bottom: 88px; right: 16px; z-index: 1000;
+      border: none; border-radius: 50%;
+      width: 42px; height: 42px;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; font-size: 18px;
+      transition: transform 0.15s;
+    }
+    #locate-btn:hover { transform: scale(1.06); }
+
+    /* ── Loading overlay ── */
+    #loading-overlay {
+      position: fixed; inset: 0; z-index: 2000;
+      background: rgba(248,249,250,0.97);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 14px;
+    }
+    #loading-overlay.hidden { display: none; }
+    .spinner {
+      width: 34px; height: 34px;
+      border: 3px solid #e5e7eb; border-top-color: #111;
+      border-radius: 50%; animation: spin 0.75s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #loading-msg { font-size: 14px; color: #999; }
+
+    /* ── Error toast ── */
+    #error-toast {
+      position: fixed; top: 72px; left: 50%; transform: translateX(-50%);
+      z-index: 2001; background: #ef4444; color: #fff;
+      padding: 10px 20px; border-radius: 50px; font-size: 13px;
+      display: none; box-shadow: 0 2px 12px rgba(239,68,68,0.4);
+    }
+
+    /* ── Leaflet overrides ── */
+    .leaflet-control-zoom {
+      margin-bottom: 88px !important; margin-right: 16px !important;
+      border: none !important; box-shadow: none !important;
+    }
+    .leaflet-control-zoom a {
+      border-radius: 50% !important; width: 36px !important; height: 36px !important;
+      line-height: 36px !important; box-shadow: 0 2px 12px rgba(0,0,0,0.13) !important;
+      border: none !important; background: rgba(255,255,255,0.96) !important;
+      backdrop-filter: blur(8px) !important; margin-bottom: 5px !important;
+      color: #333 !important; font-size: 18px !important;
+    }
+    .leaflet-control-zoom a:hover { background: #fff !important; }
+    .leaflet-control-zoom-in, .leaflet-control-zoom-out { border-radius: 50% !important; }
+    .leaflet-control-attribution { font-size: 10px !important; background: rgba(255,255,255,0.7) !important; }
+  </style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<div id="top-bar">
+  <button class="v-btn active" data-type="privateCar">Car</button>
+  <button class="v-btn" data-type="motorCycle">Moto</button>
+  <button class="v-btn" data-type="LGV">LGV</button>
+  <button class="v-btn" data-type="HGV">HGV</button>
+  <button class="v-btn" data-type="coach">Coach</button>
+</div>
+
+<div id="bottom-bar">
+  <div id="legend" class="glass-pill">
+    <div class="legend-item"><div class="dot" style="background:#22c55e"></div>Available</div>
+    <div class="legend-item"><div class="dot" style="background:#f59e0b"></div>Limited</div>
+    <div class="legend-item"><div class="dot" style="background:#ef4444"></div>Full</div>
+    <div class="legend-item"><div class="dot" style="background:#9ca3af"></div>No data</div>
+  </div>
+  <div id="status-pill" class="glass-pill">
+    <div class="live-dot"></div>
+    <span id="status-text">Loading…</span>
+  </div>
+</div>
+
+<div id="zoom-hint">Zoom in to see vacancy counts</div>
+
+<button id="locate-btn" class="glass-pill" title="My location">📍</button>
+
+<div id="loading-overlay">
+  <div class="spinner"></div>
+  <p id="loading-msg">Finding your location…</p>
+</div>
+
+<div id="error-toast"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// ═══════════════════════════════════════════════════════════════
+//  Config
+// ═══════════════════════════════════════════════════════════════
+const API         = 'https://api.data.gov.hk/v1/carpark-info-vacancy';
+const HK_CENTER   = [22.3193, 114.1694];
+const ZOOM_START  = 15;   // initial zoom when centred on user
+const ZOOM_HK     = 12;   // fallback zoom over all HK
+const ZOOM_NUMBERS = 14;  // show vacancy numbers at this zoom and above
+const REFRESH_MS  = 60_000;
+const RENDER_DEBOUNCE_MS = 150;
+
+const COL = {
+  available : '#22c55e',
+  limited   : '#f59e0b',
+  full      : '#ef4444',
+  nodata    : '#9ca3af',
+};
+
+// ═══════════════════════════════════════════════════════════════
+//  State
+// ═══════════════════════════════════════════════════════════════
+let map, markerLayer;
+let infoById    = {};
+let vacancyById = {};
+let currentType = 'privateCar';
+let refreshTimer = null;
+let renderTimer  = null;
+
+// ═══════════════════════════════════════════════════════════════
+//  Map
+// ═══════════════════════════════════════════════════════════════
+function initMap(center, zoom) {
+  map = L.map('map', { zoomControl: false }).setView(center, zoom);
+
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    attribution : '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    subdomains  : 'abcd',
+    maxZoom     : 20,
+  }).addTo(map);
+
+  L.control.zoom({ position: 'bottomright' }).addTo(map);
+  markerLayer = L.layerGroup().addTo(map);
+
+  // Debounced re-render on every pan / zoom
+  map.on('moveend zoomend', () => {
+    clearTimeout(renderTimer);
+    renderTimer = setTimeout(render, RENDER_DEBOUNCE_MS);
+    updateZoomHint();
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Geolocation
+// ═══════════════════════════════════════════════════════════════
+function getLocation() {
+  return new Promise(resolve => {
+    if (!navigator.geolocation) { resolve(null); return; }
+    const fallback = setTimeout(() => resolve(null), 6000);
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => { clearTimeout(fallback); resolve({ lat: coords.latitude, lng: coords.longitude }); },
+      ()           => { clearTimeout(fallback); resolve(null); }
+    );
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Data fetching
+// ═══════════════════════════════════════════════════════════════
+async function apiFetch(params) {
+  const res = await fetch(`${API}?${new URLSearchParams(params)}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  return Array.isArray(data) ? data : (data.results ?? []);
+}
+
+async function loadAll() {
+  const [infoArr, vacArr] = await Promise.all([
+    apiFetch({ data: 'info', lang: 'en_US' }),
+    apiFetch({ data: 'vacancy' }),
+  ]);
+  infoById    = {};
+  vacancyById = {};
+  for (const p of infoArr) infoById[p.park_Id]    = p;
+  for (const v of vacArr)  vacancyById[v.park_Id] = v;
+}
+
+async function refreshVacancy() {
+  const vacArr = await apiFetch({ data: 'vacancy' });
+  vacancyById = {};
+  for (const v of vacArr) vacancyById[v.park_Id] = v;
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Domain helpers
+// ═══════════════════════════════════════════════════════════════
+function getVacancy(parkId, vType) {
+  const v = vacancyById[parkId];
+  if (!v?.[vType]) return -1;
+  let sum = 0, ok = false;
+  for (const e of v[vType]) {
+    if (e.vacancy !== -1) { sum += e.vacancy; ok = true; }
+  }
+  return ok ? sum : -1;
+}
+
+function getLastUpdate(parkId, vType) {
+  return vacancyById[parkId]?.[vType]?.[0]?.lastupdate ?? null;
+}
+
+function vacancyColor(vacancy, total) {
+  if (vacancy === -1) return COL.nodata;
+  if (vacancy === 0)  return COL.full;
+  if (total > 0) {
+    const pct = vacancy / total;
+    if (pct > 0.30) return COL.available;
+    if (pct > 0.05) return COL.limited;
+    return COL.full;
+  }
+  if (vacancy >= 10) return COL.available;
+  if (vacancy >= 3)  return COL.limited;
+  return COL.full;
+}
+
+function currentRate(info, vType) {
+  const charges = info[vType]?.hourlyCharges;
+  if (!charges?.length) return null;
+  const now    = new Date();
+  const dayAbb = ['SUN','MON','TUE','WED','THU','FRI','SAT'][now.getDay()];
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  for (const c of charges) {
+    if (!c.weekdays?.includes(dayAbb)) continue;
+    const [sh, sm] = c.periodStart.split(':').map(Number);
+    const [eh, em] = c.periodEnd.split(':').map(Number);
+    const start = sh * 60 + sm;
+    const end   = (eh === 0 && em === 0) ? 1440 : eh * 60 + em;
+    if (nowMin >= start && nowMin < end) return c.price;
+  }
+  return null;
+}
+
+function timeAgo(ts) {
+  if (!ts) return '–';
+  const s = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
+  if (s <  90)  return 'just now';
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  return `${Math.floor(s / 3600)}h ago`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Icons  (two tiers based on zoom)
+// ═══════════════════════════════════════════════════════════════
+function makeNumberedIcon(label, color) {
+  const fs = label.length >= 3 ? 9 : label.length === 2 ? 11 : 13;
+  return L.divIcon({
+    className   : '',
+    html        : `<div style="background:${color};width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:${fs}px;letter-spacing:-0.5px;border:2.5px solid rgba(255,255,255,0.9);box-shadow:0 2px 10px rgba(0,0,0,0.22);">${label}</div>`,
+    iconSize    : [34, 34],
+    iconAnchor  : [17, 17],
+    popupAnchor : [0, -22],
+  });
+}
+
+function makeDotIcon(color) {
+  return L.divIcon({
+    className   : '',
+    html        : `<div style="background:${color};width:14px;height:14px;border-radius:50%;border:2px solid rgba(255,255,255,0.85);box-shadow:0 1px 5px rgba(0,0,0,0.22);"></div>`,
+    iconSize    : [14, 14],
+    iconAnchor  : [7, 7],
+    popupAnchor : [0, -10],
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Popup
+// ═══════════════════════════════════════════════════════════════
+function makePopup(info, vacancy, vType) {
+  const vd     = info[vType];
+  const total  = vd?.space ?? 0;
+  const color  = vacancyColor(vacancy, total);
+  const rate   = currentRate(info, vType);
+  const height = info.heightLimits?.[0]?.height;
+  const lu     = getLastUpdate(info.park_Id, vType);
+  const isOpen = info.opening_status !== 'CLOSE';
+
+  const badges = [];
+  if (info.facilities?.includes('evCharger'))    badges.push('<span style="background:#f0fdf4;color:#166534;border-radius:4px;padding:2px 7px;font-size:11px">⚡ EV</span>');
+  if (info.facilities?.includes('disabilities')) badges.push('<span style="background:#eff6ff;color:#1d4ed8;border-radius:4px;padding:2px 7px;font-size:11px">♿</span>');
+
+  const vcDisplay = vacancy === -1
+    ? `<span style="font-size:18px;color:#9ca3af;font-weight:500">No data</span>`
+    : `<span style="font-size:40px;font-weight:800;line-height:1;color:${color}">${Math.min(vacancy,999)}</span>${total ? `<span style="color:#ccc;font-size:13px;margin-left:5px;align-self:flex-end;margin-bottom:4px">/ ${total}</span>` : ''}`;
+
+  const meta = [];
+  if (rate   != null) meta.push(`<span><b>HK$${rate}</b>/hr</span>`);
+  if (height != null) meta.push(`<span>${height}m max</span>`);
+  meta.push(`<span style="color:${isOpen ? '#22c55e' : '#ef4444'}">${isOpen ? '● Open' : '● Closed'}</span>`);
+
+  return `<div style="font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif;min-width:230px">
+    <div style="font-size:14px;font-weight:700;line-height:1.4;margin-bottom:12px;color:#111;padding-right:16px">${info.name}</div>
+    <div style="display:flex;align-items:center;gap:4px;margin-bottom:10px">${vcDisplay}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:10px;font-size:13px;color:#555;margin-bottom:${badges.length?'10px':'0'}">${meta.join('')}</div>
+    ${badges.length ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">${badges.join('')}</div>` : ''}
+    <div style="font-size:11px;color:#bbb;border-top:1px solid #f3f4f6;padding-top:8px;line-height:1.7">
+      ${info.displayAddress || info.address?.streetName || ''}${lu ? `<br>Updated ${timeAgo(lu)}` : ''}
+    </div>
+  </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Render  — viewport-only, zoom-aware
+// ═══════════════════════════════════════════════════════════════
+function render() {
+  if (!map) return;
+  markerLayer.clearLayers();
+
+  const bounds      = map.getBounds().pad(0.05);
+  const zoom        = map.getZoom();
+  const showNumbers = zoom >= ZOOM_NUMBERS;
+  let visible = 0, total = 0;
+
+  for (const [pid, info] of Object.entries(infoById)) {
+    if (!info.latitude || !info.longitude) continue;
+    const vd         = info[currentType];
+    const hasVacancy = !!vacancyById[pid]?.[currentType];
+    if (!vd && !hasVacancy) continue;
+    if (vd && vd.space === 0 && !hasVacancy) continue;
+
+    total++;
+    if (!bounds.contains([info.latitude, info.longitude])) continue;
+    visible++;
+
+    const vacancy  = getVacancy(pid, currentType);
+    const totalSpc = vd?.space ?? 0;
+    const color    = vacancyColor(vacancy, totalSpc);
+    const label    = vacancy === -1 ? '?' : String(Math.min(vacancy, 999));
+
+    const icon   = showNumbers ? makeNumberedIcon(label, color) : makeDotIcon(color);
+    const marker = L.marker([info.latitude, info.longitude], { icon });
+    marker.bindPopup(makePopup(info, vacancy, currentType), { maxWidth: 290, minWidth: 240 });
+    markerLayer.addLayer(marker);
+  }
+
+  const now = new Date().toLocaleTimeString('en-HK', { hour: '2-digit', minute: '2-digit' });
+  document.getElementById('status-text').textContent = `${visible} nearby · ${now}`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  UI helpers
+// ═══════════════════════════════════════════════════════════════
+function updateZoomHint() {
+  const hint = document.getElementById('zoom-hint');
+  const show = map.getZoom() < ZOOM_NUMBERS;
+  hint.classList.toggle('visible', show);
+}
+
+let hintFadeTimer = null;
+function showZoomHintBriefly() {
+  const hint = document.getElementById('zoom-hint');
+  hint.classList.add('visible');
+  clearTimeout(hintFadeTimer);
+  hintFadeTimer = setTimeout(() => hint.classList.remove('visible'), 3000);
+}
+
+function showError(msg) {
+  const el = document.getElementById('error-toast');
+  el.textContent = msg;
+  el.style.display = 'block';
+  setTimeout(() => { el.style.display = 'none'; }, 4000);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Controls
+// ═══════════════════════════════════════════════════════════════
+function setupControls() {
+  document.querySelectorAll('.v-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.v-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentType = btn.dataset.type;
+      render();
+    });
+  });
+
+  document.getElementById('locate-btn').addEventListener('click', () => {
+    if (!navigator.geolocation) return showError('Geolocation not supported.');
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => map.setView([coords.latitude, coords.longitude], ZOOM_START),
+      ()           => showError('Could not get your location.')
+    );
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Boot
+// ═══════════════════════════════════════════════════════════════
+async function boot() {
+  const loadingMsg = document.getElementById('loading-msg');
+
+  // 1 — try to get location (6 s timeout, non-blocking)
+  loadingMsg.textContent = 'Finding your location…';
+  const loc = await getLocation();
+  const center = loc ? [loc.lat, loc.lng] : HK_CENTER;
+  const zoom   = loc ? ZOOM_START : ZOOM_HK;
+
+  initMap(center, zoom);
+  setupControls();
+
+  // 2 — load carpark data
+  loadingMsg.textContent = 'Fetching live parking data…';
+  try {
+    await loadAll();
+    render();
+    if (zoom < ZOOM_NUMBERS) showZoomHintBriefly();
+  } catch (err) {
+    console.error(err);
+    showError('Failed to load parking data — please refresh.');
+  } finally {
+    document.getElementById('loading-overlay').classList.add('hidden');
+  }
+
+  // 3 — refresh vacancy every 60 s
+  refreshTimer = setInterval(async () => {
+    try { await refreshVacancy(); render(); } catch (_) {}
+  }, REFRESH_MS);
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  }
+  boot();
+});
+</script>
+</body>
+</html>
