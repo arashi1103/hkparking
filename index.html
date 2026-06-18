@@ -1,285 +1,575 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-Hant">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="theme-color" content="#ffffff">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <meta name="apple-mobile-web-app-title" content="HK Parking">
+  <meta name="apple-mobile-web-app-title" content="泊車Live">
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icon-192.png">
-  <title>HK Parking Live</title>
+  <title>泊車Live · HK Parking</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { height: 100%; overflow: hidden; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif; background: #f0f0f0; }
+    html, body { height: 100%; width: 100%; overflow: hidden; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang TC', 'Helvetica Neue', Arial, sans-serif;
+      background: #f0f0f0;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
 
-    #map { position: absolute; inset: 0; }
+    /* ── Map ── */
+    #map {
+      position: absolute; inset: 0;
+      touch-action: pan-x pan-y;
+      -webkit-tap-highlight-color: transparent;
+    }
 
-    /* ── Popup overrides ── */
+    /* ── Leaflet overrides ── */
     .leaflet-popup-content-wrapper {
-      border-radius: 16px !important;
-      padding: 0 !important;
-      box-shadow: 0 6px 32px rgba(0,0,0,0.16) !important;
-      border: none !important;
+      border-radius: 16px !important; padding: 0 !important;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.18) !important; border: none !important;
     }
-    .leaflet-popup-content { margin: 18px 18px 16px !important; }
+    .leaflet-popup-content { margin: 16px !important; }
     .leaflet-popup-tip-container { display: none !important; }
-    .leaflet-popup-close-button { color: #bbb !important; font-size: 18px !important; top: 10px !important; right: 12px !important; }
+    .leaflet-popup-close-button { color: #ccc !important; font-size: 20px !important; top: 10px !important; right: 12px !important; }
+    .leaflet-control-zoom {
+      margin-bottom: 96px !important; margin-right: 16px !important;
+      border: none !important; box-shadow: none !important;
+    }
+    .leaflet-control-zoom a {
+      border-radius: 50% !important; width: 40px !important; height: 40px !important;
+      line-height: 40px !important; box-shadow: 0 2px 14px rgba(0,0,0,0.14) !important;
+      border: none !important; background: rgba(255,255,255,0.97) !important;
+      margin-bottom: 6px !important; color: #222 !important; font-size: 20px !important;
+      display: flex !important; align-items: center !important; justify-content: center !important;
+    }
+    .leaflet-control-zoom-in, .leaflet-control-zoom-out { border-radius: 50% !important; }
+    .leaflet-control-attribution { font-size: 9px !important; background: rgba(255,255,255,0.65) !important; }
 
-    /* ── Top bar – vehicle tabs ── */
+    /* Smooth zoom animations */
+    .leaflet-zoom-anim .leaflet-zoom-animated { will-change: transform; }
+    .leaflet-tile { transition: opacity 0.15s linear; }
+
+    /* ── Glass surface ── */
+    .glass {
+      background: rgba(255,255,255,0.95);
+      backdrop-filter: blur(16px) saturate(180%);
+      -webkit-backdrop-filter: blur(16px) saturate(180%);
+      box-shadow: 0 2px 20px rgba(0,0,0,0.11);
+    }
+
+    /* ── Top bar: vehicle tabs + lang ── */
     #top-bar {
-      position: fixed;
-      top: 16px; left: 50%; transform: translateX(-50%);
+      position: fixed; top: env(safe-area-inset-top, 12px); left: 50%;
+      transform: translateX(-50%);
       z-index: 1000;
-      background: rgba(255,255,255,0.96);
-      backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-      border-radius: 50px;
-      padding: 5px;
-      display: flex; gap: 2px;
-      box-shadow: 0 2px 20px rgba(0,0,0,0.13);
+      border-radius: 50px; padding: 5px;
+      display: flex; align-items: center; gap: 2px;
+      max-width: calc(100vw - 32px);
     }
+    #top-bar { top: max(env(safe-area-inset-top, 0px) + 12px, 12px); }
+
     .v-btn {
-      padding: 7px 16px; border: none; border-radius: 50px;
+      padding: 8px 14px; border: none; border-radius: 50px;
       cursor: pointer; font-size: 13px; font-weight: 500;
-      background: transparent; color: #999;
-      transition: all 0.18s ease; white-space: nowrap;
+      background: transparent; color: #aaa;
+      transition: all 0.2s ease; white-space: nowrap;
+      -webkit-tap-highlight-color: transparent;
+      min-height: 36px;
     }
-    .v-btn:hover { color: #333; }
+    .v-btn:active { opacity: 0.7; }
     .v-btn.active { background: #111; color: #fff; }
+
+    #lang-btn {
+      margin-left: 4px; padding: 7px 12px;
+      font-size: 12px; font-weight: 600;
+      color: #555; border-left: 1px solid #eee;
+      min-height: 36px;
+    }
 
     /* ── Bottom bar ── */
     #bottom-bar {
-      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+      position: fixed; bottom: max(env(safe-area-inset-bottom, 0px) + 20px, 20px);
+      left: 50%; transform: translateX(-50%);
       z-index: 1000;
-      display: flex; align-items: center; gap: 10px; white-space: nowrap;
+      display: flex; align-items: center; gap: 8px;
+      max-width: calc(100vw - 32px);
     }
-    .glass-pill {
-      background: rgba(255,255,255,0.96);
-      backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-      box-shadow: 0 2px 16px rgba(0,0,0,0.12);
-    }
+
     #legend {
-      border-radius: 50px; padding: 9px 16px;
-      display: flex; gap: 14px; align-items: center;
-      font-size: 12px; color: #666;
+      border-radius: 50px; padding: 9px 14px;
+      display: flex; gap: 12px; align-items: center;
+      font-size: 11.5px; color: #666; flex-shrink: 0;
     }
-    .legend-item { display: flex; align-items: center; gap: 6px; }
-    .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .legend-item { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
 
     #status-pill {
-      border-radius: 50px; padding: 9px 14px;
-      font-size: 12px; color: #999;
-      display: flex; align-items: center; gap: 7px;
+      border-radius: 50px; padding: 9px 13px;
+      font-size: 11.5px; color: #999;
+      display: flex; align-items: center; gap: 6px; white-space: nowrap;
     }
     .live-dot {
-      width: 7px; height: 7px; border-radius: 50%;
-      background: #22c55e;
-      animation: blink 2.2s ease-in-out infinite;
+      width: 6px; height: 6px; border-radius: 50%;
+      background: #22c55e; flex-shrink: 0;
+      animation: blink 2.5s ease-in-out infinite;
     }
     @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
 
     /* ── Zoom hint ── */
     #zoom-hint {
-      position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
+      position: fixed;
+      bottom: max(env(safe-area-inset-bottom, 0px) + 84px, 84px);
+      left: 50%; transform: translateX(-50%);
       z-index: 1000;
-      background: rgba(0,0,0,0.65);
-      color: #fff; font-size: 12px;
-      padding: 7px 14px; border-radius: 50px;
-      pointer-events: none;
-      opacity: 0; transition: opacity 0.3s;
+      background: rgba(0,0,0,0.72); color: #fff;
+      font-size: 12px; padding: 7px 16px; border-radius: 50px;
+      pointer-events: none; white-space: nowrap;
+      opacity: 0; transition: opacity 0.4s ease;
     }
     #zoom-hint.visible { opacity: 1; }
 
     /* ── Locate button ── */
     #locate-btn {
-      position: fixed; bottom: 88px; right: 16px; z-index: 1000;
+      position: fixed;
+      bottom: max(env(safe-area-inset-bottom, 0px) + 96px, 96px);
+      right: 16px; z-index: 1000;
       border: none; border-radius: 50%;
-      width: 42px; height: 42px;
+      width: 44px; height: 44px;
       display: flex; align-items: center; justify-content: center;
-      cursor: pointer; font-size: 18px;
+      cursor: pointer; font-size: 19px;
       transition: transform 0.15s;
+      -webkit-tap-highlight-color: transparent;
     }
-    #locate-btn:hover { transform: scale(1.06); }
+    #locate-btn:active { transform: scale(0.92); }
+    #locate-btn.following { background: rgba(59,130,246,0.15) !important; }
 
     /* ── Loading overlay ── */
     #loading-overlay {
       position: fixed; inset: 0; z-index: 2000;
       background: rgba(248,249,250,0.97);
       display: flex; flex-direction: column;
-      align-items: center; justify-content: center; gap: 14px;
+      align-items: center; justify-content: center; gap: 16px;
+      transition: opacity 0.3s ease;
     }
-    #loading-overlay.hidden { display: none; }
+    #loading-overlay.hidden { opacity: 0; pointer-events: none; }
     .spinner {
-      width: 34px; height: 34px;
+      width: 36px; height: 36px;
       border: 3px solid #e5e7eb; border-top-color: #111;
       border-radius: 50%; animation: spin 0.75s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
     #loading-msg { font-size: 14px; color: #999; }
+    #loading-sub { font-size: 12px; color: #ccc; }
 
     /* ── Error toast ── */
     #error-toast {
-      position: fixed; top: 72px; left: 50%; transform: translateX(-50%);
+      position: fixed; top: max(env(safe-area-inset-top, 0px) + 70px, 70px);
+      left: 50%; transform: translateX(-50%);
       z-index: 2001; background: #ef4444; color: #fff;
       padding: 10px 20px; border-radius: 50px; font-size: 13px;
-      display: none; box-shadow: 0 2px 12px rgba(239,68,68,0.4);
+      display: none; box-shadow: 0 2px 14px rgba(239,68,68,0.4);
+      white-space: nowrap;
     }
 
-    /* ── Leaflet overrides ── */
-    .leaflet-control-zoom {
-      margin-bottom: 88px !important; margin-right: 16px !important;
-      border: none !important; box-shadow: none !important;
+    /* ── User location pulse ── */
+    @keyframes locPulse {
+      0% { transform: scale(1); opacity: 0.6; }
+      70% { transform: scale(3.5); opacity: 0; }
+      100% { transform: scale(3.5); opacity: 0; }
     }
-    .leaflet-control-zoom a {
-      border-radius: 50% !important; width: 36px !important; height: 36px !important;
-      line-height: 36px !important; box-shadow: 0 2px 12px rgba(0,0,0,0.13) !important;
-      border: none !important; background: rgba(255,255,255,0.96) !important;
-      backdrop-filter: blur(8px) !important; margin-bottom: 5px !important;
-      color: #333 !important; font-size: 18px !important;
-    }
-    .leaflet-control-zoom a:hover { background: #fff !important; }
-    .leaflet-control-zoom-in, .leaflet-control-zoom-out { border-radius: 50% !important; }
-    .leaflet-control-attribution { font-size: 10px !important; background: rgba(255,255,255,0.7) !important; }
   </style>
 </head>
 <body>
 
 <div id="map"></div>
 
-<div id="top-bar">
-  <button class="v-btn active" data-type="privateCar">Car</button>
-  <button class="v-btn" data-type="motorCycle">Moto</button>
-  <button class="v-btn" data-type="LGV">LGV</button>
-  <button class="v-btn" data-type="HGV">HGV</button>
-  <button class="v-btn" data-type="coach">Coach</button>
+<div id="top-bar" class="glass">
+  <button class="v-btn active" data-type="privateCar" id="btn-car">私家車</button>
+  <button class="v-btn" data-type="motorCycle" id="btn-moto">電單車</button>
+  <button class="v-btn" data-type="LGV" id="btn-lgv">輕貨</button>
+  <button class="v-btn" data-type="HGV" id="btn-hgv">重貨</button>
+  <button class="v-btn" data-type="coach" id="btn-coach">旅巴</button>
+  <button class="v-btn" id="lang-btn">EN</button>
 </div>
 
 <div id="bottom-bar">
-  <div id="legend" class="glass-pill">
-    <div class="legend-item"><div class="dot" style="background:#22c55e"></div>Available</div>
-    <div class="legend-item"><div class="dot" style="background:#f59e0b"></div>Limited</div>
-    <div class="legend-item"><div class="dot" style="background:#ef4444"></div>Full</div>
-    <div class="legend-item"><div class="dot" style="background:#9ca3af"></div>No data</div>
+  <div id="legend" class="glass">
+    <div class="legend-item"><div class="dot" style="background:#22c55e"></div><span id="leg-available">有空位</span></div>
+    <div class="legend-item"><div class="dot" style="background:#f59e0b"></div><span id="leg-limited">有限空位</span></div>
+    <div class="legend-item"><div class="dot" style="background:#ef4444"></div><span id="leg-full">已滿</span></div>
+    <div class="legend-item"><div class="dot" style="background:#9ca3af"></div><span id="leg-nodata">暫無數據</span></div>
   </div>
-  <div id="status-pill" class="glass-pill">
+  <div id="status-pill" class="glass">
     <div class="live-dot"></div>
-    <span id="status-text">Loading…</span>
+    <span id="status-text">載入中…</span>
   </div>
 </div>
 
-<div id="zoom-hint">Zoom in to see vacancy counts</div>
+<div id="zoom-hint">放大查看空格數量</div>
 
-<button id="locate-btn" class="glass-pill" title="My location">📍</button>
+<button id="locate-btn" class="glass" title="我的位置">📍</button>
 
 <div id="loading-overlay">
   <div class="spinner"></div>
-  <p id="loading-msg">Finding your location…</p>
+  <p id="loading-msg">正在定位…</p>
+  <p id="loading-sub"></p>
 </div>
 
 <div id="error-toast"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
+'use strict';
+
+// ═══════════════════════════════════════════════════════════════
+//  i18n
+// ═══════════════════════════════════════════════════════════════
+const T = {
+  zh: {
+    tabs: { privateCar:'私家車', motorCycle:'電單車', LGV:'輕貨', HGV:'重貨', coach:'旅巴' },
+    langToggle: 'EN',
+    available:'有空位', limited:'空位有限', full:'已滿', nodata:'暫無數據',
+    loadingLoc: '正在定位…', loadingSub: '',
+    loadingData: '正在載入泊車資料…',
+    zoomHint: '放大查看空格數量',
+    open:'開放中', closed:'已關閉',
+    noVacancy: '暫無數據',
+    spaces: '個空位', perHour: '/時', maxH: '高度限制',
+    updatedFn: (t) => `${t}前更新`,
+    justNow:'剛剛', minAgoFn:(m)=>`${m}分鐘前`, hrAgoFn:(h)=>`${h}小時前`,
+    meterTitle:'咪錶泊車位', occupied:'已佔用', vacant:'空置',
+    nearby:'附近', locErr:'無法取得位置', dataErr:'載入資料失敗，請重試',
+    status: (n,t) => `${n}個停車場 · ${t}`,
+  },
+  en: {
+    tabs: { privateCar:'Car', motorCycle:'Moto', LGV:'LGV', HGV:'HGV', coach:'Coach' },
+    langToggle: '中',
+    available:'Available', limited:'Limited', full:'Full', nodata:'No data',
+    loadingLoc: 'Finding your location…', loadingSub: '',
+    loadingData: 'Loading parking data…',
+    zoomHint: 'Zoom in for vacancy counts',
+    open:'Open', closed:'Closed',
+    noVacancy: 'No data',
+    spaces: 'spaces', perHour: '/hr', maxH: 'max height',
+    updatedFn: (t) => `Updated ${t}`,
+    justNow:'just now', minAgoFn:(m)=>`${m}m ago`, hrAgoFn:(h)=>`${h}h ago`,
+    meterTitle:'Parking Meter', occupied:'Occupied', vacant:'Vacant',
+    nearby:'nearby', locErr:'Location unavailable', dataErr:'Failed to load data',
+    status: (n,t) => `${n} lots · ${t}`,
+  },
+};
+
 // ═══════════════════════════════════════════════════════════════
 //  Config
 // ═══════════════════════════════════════════════════════════════
-const API         = 'https://api.data.gov.hk/v1/carpark-info-vacancy';
-const HK_CENTER   = [22.3193, 114.1694];
-const ZOOM_START  = 15;   // initial zoom when centred on user
-const ZOOM_HK     = 12;   // fallback zoom over all HK
-const ZOOM_NUMBERS = 14;  // show vacancy numbers at this zoom and above
-const REFRESH_MS  = 60_000;
-const RENDER_DEBOUNCE_MS = 150;
+const CARPARK_API   = 'https://api.data.gov.hk/v1/carpark-info-vacancy';
+// ArcGIS REST — parking meter spaces (layer 0), requests WGS84 via outSR=4326
+const METER_REST    = 'https://portal.csdi.gov.hk/server/rest/services/common/td_rcd_1638930345315_81787/MapServer/0/query';
+// Live occupancy CSV (all HK, ~few KB, join by ParkingSpaceId)
+const METER_OCC_CSV = 'https://resource.data.one.gov.hk/td/psiparkingspaces/occupancystatus/occupancystatus.csv';
 
-const COL = {
-  available : '#22c55e',
-  limited   : '#f59e0b',
-  full      : '#ef4444',
-  nodata    : '#9ca3af',
-};
+const HK_CENTER    = [22.3193, 114.1694];
+const ZOOM_START   = 16;
+const ZOOM_HK      = 12;
+const ZOOM_NUMBERS = 14;   // show counts above this zoom
+const ZOOM_METERS  = 16;   // show meter dots above this zoom
+const REFRESH_MS   = 60_000;
+const RENDER_DELAY = 120;  // debounce ms
+
+const COL = { available:'#22c55e', limited:'#f59e0b', full:'#ef4444', nodata:'#9ca3af' };
+
+// Pad (in degrees) around viewport before deciding to re-fetch
+const FETCH_PAD = 0.008;
 
 // ═══════════════════════════════════════════════════════════════
 //  State
 // ═══════════════════════════════════════════════════════════════
-let map, markerLayer;
-let infoById    = {};
-let vacancyById = {};
-let currentType = 'privateCar';
-let refreshTimer = null;
-let renderTimer  = null;
+let map, carparkLayer, meterLayer, userLayer;
+let infoById       = {};   // park_Id → carpark info
+let vacancyById    = {};   // park_Id → vacancy data
+let meterSpaces    = {};   // ParkingSpaceId → {lat,lng,...attrs}
+let meterOccupancy = {};   // ParkingSpaceId → {occupancy:'O'|'V', meterStatus, updated}
+let meterBounds    = null; // bounds last fetched for meters
+let currentType    = 'privateCar';
+let currentLang    = 'zh';
+let loadedBounds   = null;
+let refreshTimer   = null;
+let renderTimer    = null;
+let watchId        = null;
+let userMarker     = null;
+let userCircle     = null;
+let userLatLng     = null;
+let followUser     = true;
+let dataLoaded     = false;
 
 // ═══════════════════════════════════════════════════════════════
-//  Map
+//  Shortcuts
+// ═══════════════════════════════════════════════════════════════
+const t = (key, ...args) => {
+  const val = T[currentLang][key];
+  return typeof val === 'function' ? val(...args) : (val ?? key);
+};
+
+// ═══════════════════════════════════════════════════════════════
+//  Map init
 // ═══════════════════════════════════════════════════════════════
 function initMap(center, zoom) {
-  map = L.map('map', { zoomControl: false }).setView(center, zoom);
+  map = L.map('map', {
+    zoomControl       : false,
+    tap               : true,
+    tapTolerance      : 15,
+    bounceAtZoomLimits: false,
+    zoomAnimation     : true,
+    inertia           : true,
+    inertiaDeceleration: 3400,
+    maxZoom           : 19,
+  }).setView(center, zoom);
 
   L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-    attribution : '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
-    subdomains  : 'abcd',
-    maxZoom     : 20,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    subdomains: 'abcd', maxZoom: 20,
   }).addTo(map);
 
   L.control.zoom({ position: 'bottomright' }).addTo(map);
-  markerLayer = L.layerGroup().addTo(map);
 
-  // Debounced re-render on every pan / zoom
+  userLayer   = L.layerGroup().addTo(map);
+  meterLayer  = L.layerGroup().addTo(map);
+  carparkLayer = L.layerGroup().addTo(map);
+
+  // Debounced re-render + lazy load on every move
   map.on('moveend zoomend', () => {
     clearTimeout(renderTimer);
-    renderTimer = setTimeout(render, RENDER_DEBOUNCE_MS);
-    updateZoomHint();
+    renderTimer = setTimeout(() => {
+      render();
+      maybeLoadMore();
+      updateZoomHint();
+    }, RENDER_DELAY);
   });
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  Geolocation
+//  Geolocation  (watchPosition for live tracking)
 // ═══════════════════════════════════════════════════════════════
-function getLocation() {
-  return new Promise(resolve => {
-    if (!navigator.geolocation) { resolve(null); return; }
-    const fallback = setTimeout(() => resolve(null), 6000);
-    navigator.geolocation.getCurrentPosition(
-      ({ coords }) => { clearTimeout(fallback); resolve({ lat: coords.latitude, lng: coords.longitude }); },
-      ()           => { clearTimeout(fallback); resolve(null); }
-    );
+function startTracking() {
+  if (!navigator.geolocation) { onNoLocation(); return; }
+
+  // Immediate low-accuracy first fix, then high-accuracy follow-up
+  watchId = navigator.geolocation.watchPosition(
+    onLocationFix,
+    onLocationError,
+    { enableHighAccuracy: true, maximumAge: 8000, timeout: 20000 }
+  );
+}
+
+function onLocationFix({ coords }) {
+  const ll = L.latLng(coords.latitude, coords.longitude);
+  userLatLng = ll;
+
+  // Draw / update blue dot
+  if (!userMarker) {
+    userMarker = L.marker(ll, { icon: makeUserIcon(), zIndexOffset: 9000 }).addTo(userLayer);
+    userCircle = L.circle(ll, {
+      radius: Math.max(coords.accuracy, 20),
+      color: '#3b82f6', fillColor: '#3b82f6',
+      fillOpacity: 0.12, weight: 1,
+    }).addTo(userLayer);
+
+    if (followUser) {
+      map.setView(ll, ZOOM_START, { animate: true, duration: 0.8 });
+      followUser = false;
+    }
+
+    // First fix: load data for this viewport
+    hideLoading();
+    loadForViewport();
+  } else {
+    userMarker.setLatLng(ll);
+    userCircle.setLatLng(ll).setRadius(Math.max(coords.accuracy, 20));
+  }
+}
+
+function onLocationError(err) {
+  console.warn('Geolocation error', err.code, err.message);
+  // Only fall back on the first call (no marker yet)
+  if (!userMarker) onNoLocation();
+}
+
+function onNoLocation() {
+  // Fallback: centre on HK and load all-region data
+  if (!dataLoaded) {
+    hideLoading();
+    loadForViewport();
+  }
+}
+
+function makeUserIcon() {
+  return L.divIcon({
+    className: '',
+    html: `<div style="position:relative;width:20px;height:20px;">
+      <div style="position:absolute;inset:0;background:rgba(59,130,246,0.35);border-radius:50%;animation:locPulse 2s ease-out infinite;"></div>
+      <div style="position:absolute;inset:3px;background:#3b82f6;border-radius:50%;border:2.5px solid #fff;box-shadow:0 2px 8px rgba(59,130,246,0.6);"></div>
+    </div>`,
+    iconSize: [20, 20], iconAnchor: [10, 10],
   });
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  Data fetching
+//  Data loading  — extent-based, incremental cache
+// ═══════════════════════════════════════════════════════════════
+async function loadForViewport() {
+  const bounds = map.getBounds().pad(FETCH_PAD);
+
+  // Skip if we've already loaded a superset of this area
+  if (loadedBounds && loadedBounds.contains(bounds)) {
+    render();
+    return;
+  }
+  loadedBounds = bounds;
+
+  const extentParam = [
+    bounds.getWest(), bounds.getSouth(),
+    bounds.getEast(), bounds.getNorth(),
+  ].map(n => n.toFixed(6)).join(',');
+
+  const apiLang = currentLang === 'zh' ? 'zh_TW' : 'en_US';
+
+  setLoadingMsg(t('loadingData'));
+
+  try {
+    const [infoArr, vacArr] = await Promise.all([
+      apiFetch({ data: 'info', lang: apiLang, extent: extentParam }),
+      apiFetch({ data: 'vacancy', extent: extentParam }),
+    ]);
+
+    let newInfo = 0;
+    for (const p of infoArr) {
+      if (!infoById[p.park_Id]) newInfo++;
+      infoById[p.park_Id] = p;
+    }
+    for (const v of vacArr) vacancyById[v.park_Id] = v;
+
+    dataLoaded = true;
+    render();
+
+    // Load parking meters at same zoom as carpark numbers
+    if (map.getZoom() >= ZOOM_NUMBERS) loadMeters(bounds);
+  } catch (err) {
+    console.error('Load failed:', err);
+    showError(t('dataErr'));
+  } finally {
+    hideLoading();
+  }
+}
+
+async function maybeLoadMore() {
+  if (!dataLoaded) return;
+  const bounds = map.getBounds().pad(FETCH_PAD);
+  if (!loadedBounds || !loadedBounds.contains(bounds)) {
+    await loadForViewport();
+  }
+  if (map.getZoom() >= ZOOM_NUMBERS) loadMeters(bounds);
+}
+
+async function refreshVacancy() {
+  if (!loadedBounds) return;
+  const extentParam = [
+    loadedBounds.getWest(), loadedBounds.getSouth(),
+    loadedBounds.getEast(), loadedBounds.getNorth(),
+  ].map(n => n.toFixed(6)).join(',');
+
+  try {
+    const [vacArr] = await Promise.all([
+      apiFetch({ data: 'vacancy', extent: extentParam }),
+      refreshMeterOccupancy(),
+    ]);
+    for (const v of vacArr) vacancyById[v.park_Id] = v;
+    render();
+  } catch (e) { /* silent */ }
+}
+
+// ── Parking meter spaces: ArcGIS REST, WGS84 output ──────────────
+async function loadMeters(bounds) {
+  // Skip if we already have data for a superset of this area
+  if (meterBounds && meterBounds.contains(bounds)) { renderMeters(); return; }
+
+  try {
+    const params = new URLSearchParams({
+      where           : '1=1',
+      geometry        : [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()].map(n=>n.toFixed(6)).join(','),
+      geometryType    : 'esriGeometryEnvelope',
+      inSR            : '4326',
+      spatialRel      : 'esriSpatialRelIntersects',
+      outFields       : 'ParkingSpaceId,PoleId,District,District_tc,Street,Street_tc,VehicleType,LPP,TimeUnit,PaymentUnit,OperatingPeriod',
+      outSR           : '4326',
+      resultRecordCount: '3000',
+      f               : 'json',
+    });
+    const res = await fetch(`${METER_REST}?${params}`, { signal: AbortSignal.timeout(10000) });
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data.error) { console.warn('Meter API error:', data.error.message ?? data.error); return; }
+    meterBounds = bounds;  // only lock after confirmed success
+    for (const feat of (data.features || [])) {
+      const id = feat.attributes?.ParkingSpaceId;
+      if (!id || !feat.geometry || feat.geometry.x == null || feat.geometry.y == null) continue;
+      meterSpaces[id] = {
+        lat: feat.geometry.y,
+        lng: feat.geometry.x,
+        ...feat.attributes,
+      };
+    }
+    // Fetch occupancy if not yet loaded (or refresh happened outside 60s cycle)
+    if (Object.keys(meterOccupancy).length === 0) await refreshMeterOccupancy();
+    renderMeters();
+  } catch (e) {
+    console.warn('Meter spaces load failed:', e);
+    // meterBounds not set — next call will retry this area
+  }
+}
+
+// ── Occupancy CSV: O = occupied, V = vacant, join by ParkingSpaceId ──
+async function refreshMeterOccupancy() {
+  try {
+    const res = await fetch(METER_OCC_CSV, { signal: AbortSignal.timeout(10000) });
+    if (!res.ok) return;
+    const text = await res.text();
+    const lines = text.trim().split('\n');
+    // header: ParkingSpaceId,ParkingMeterStatus,OccupancyStatus,OccupancyDateChanged
+    meterOccupancy = {};
+    for (let i = 1; i < lines.length; i++) {
+      const cols = lines[i].split(',');
+      if (cols.length < 3) continue;
+      meterOccupancy[cols[0].trim()] = {
+        meterStatus: cols[1].trim(),   // N = normal, NU = non-utility
+        occupancy  : cols[2].trim(),   // O = occupied, V = vacant
+        updated    : cols[3]?.trim() ?? '',
+      };
+    }
+  } catch (e) {
+    console.warn('Occupancy CSV load failed:', e);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  API helper
 // ═══════════════════════════════════════════════════════════════
 async function apiFetch(params) {
-  const res = await fetch(`${API}?${new URLSearchParams(params)}`);
+  const res = await fetch(`${CARPARK_API}?${new URLSearchParams(params)}`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
   return Array.isArray(data) ? data : (data.results ?? []);
 }
 
-async function loadAll() {
-  const [infoArr, vacArr] = await Promise.all([
-    apiFetch({ data: 'info', lang: 'en_US' }),
-    apiFetch({ data: 'vacancy' }),
-  ]);
-  infoById    = {};
-  vacancyById = {};
-  for (const p of infoArr) infoById[p.park_Id]    = p;
-  for (const v of vacArr)  vacancyById[v.park_Id] = v;
-}
-
-async function refreshVacancy() {
-  const vacArr = await apiFetch({ data: 'vacancy' });
-  vacancyById = {};
-  for (const v of vacArr) vacancyById[v.park_Id] = v;
-}
-
 // ═══════════════════════════════════════════════════════════════
 //  Domain helpers
 // ═══════════════════════════════════════════════════════════════
-function getVacancy(parkId, vType) {
-  const v = vacancyById[parkId];
+function getVacancy(pid, vType) {
+  const v = vacancyById[pid];
   if (!v?.[vType]) return -1;
   let sum = 0, ok = false;
   for (const e of v[vType]) {
@@ -288,21 +578,16 @@ function getVacancy(parkId, vType) {
   return ok ? sum : -1;
 }
 
-function getLastUpdate(parkId, vType) {
-  return vacancyById[parkId]?.[vType]?.[0]?.lastupdate ?? null;
+function getLastUpdate(pid, vType) {
+  return vacancyById[pid]?.[vType]?.[0]?.lastupdate ?? null;
 }
 
 function vacancyColor(vacancy, total) {
   if (vacancy === -1) return COL.nodata;
   if (vacancy === 0)  return COL.full;
-  if (total > 0) {
-    const pct = vacancy / total;
-    if (pct > 0.30) return COL.available;
-    if (pct > 0.05) return COL.limited;
-    return COL.full;
-  }
-  if (vacancy >= 10) return COL.available;
-  if (vacancy >= 3)  return COL.limited;
+  const pct = total > 0 ? vacancy / total : (vacancy >= 10 ? 1 : vacancy >= 3 ? 0.2 : 0.04);
+  if (pct > 0.30) return COL.available;
+  if (pct > 0.05) return COL.limited;
   return COL.full;
 }
 
@@ -326,39 +611,56 @@ function currentRate(info, vType) {
 function timeAgo(ts) {
   if (!ts) return '–';
   const s = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
-  if (s <  90)  return 'just now';
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
-  return `${Math.floor(s / 3600)}h ago`;
+  if (s < 90)   return t('justNow');
+  if (s < 3600) return t('minAgoFn', Math.floor(s/60));
+  return t('hrAgoFn', Math.floor(s/3600));
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  Icons  (two tiers based on zoom)
+//  Icon factories
 // ═══════════════════════════════════════════════════════════════
 function makeNumberedIcon(label, color) {
-  const fs = label.length >= 3 ? 9 : label.length === 2 ? 11 : 13;
+  const len = label.length;
+  const fs = len >= 3 ? 9 : len === 2 ? 11 : 13;
   return L.divIcon({
     className   : '',
-    html        : `<div style="background:${color};width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:${fs}px;letter-spacing:-0.5px;border:2.5px solid rgba(255,255,255,0.9);box-shadow:0 2px 10px rgba(0,0,0,0.22);">${label}</div>`,
-    iconSize    : [34, 34],
-    iconAnchor  : [17, 17],
-    popupAnchor : [0, -22],
+    html        : `<div style="background:${color};width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:${fs}px;letter-spacing:-0.5px;border:2.5px solid rgba(255,255,255,0.92);box-shadow:0 2px 12px rgba(0,0,0,0.22);">${label}</div>`,
+    iconSize    : [36, 36], iconAnchor: [18, 18], popupAnchor: [0, -22],
   });
 }
 
 function makeDotIcon(color) {
   return L.divIcon({
     className   : '',
-    html        : `<div style="background:${color};width:14px;height:14px;border-radius:50%;border:2px solid rgba(255,255,255,0.85);box-shadow:0 1px 5px rgba(0,0,0,0.22);"></div>`,
-    iconSize    : [14, 14],
-    iconAnchor  : [7, 7],
-    popupAnchor : [0, -10],
+    html        : `<div style="background:${color};width:14px;height:14px;border-radius:50%;border:2px solid rgba(255,255,255,0.88);box-shadow:0 1px 5px rgba(0,0,0,0.22);"></div>`,
+    iconSize    : [14, 14], iconAnchor: [7, 7], popupAnchor: [0, -10],
+  });
+}
+
+// null = no occupancy data (meter down / not equipped)
+function makeMeterIcon(occupancy) {
+  const bg = occupancy === 'V' ? '#22c55e' : occupancy === 'O' ? '#ef4444' : '#9ca3af';
+  return L.divIcon({
+    className   : '',
+    html        : `<div style="background:${bg};width:11px;height:11px;border-radius:2px;border:2px solid rgba(255,255,255,0.9);box-shadow:0 1px 5px rgba(0,0,0,0.28);"></div>`,
+    iconSize    : [11, 11], iconAnchor: [5, 5], popupAnchor: [0, -8],
+  });
+}
+
+// Cluster icon for meters at zoom 14–15: square badge showing vacant count
+function makeMeterClusterIcon(vacantCount, color) {
+  const fs = vacantCount >= 100 ? 9 : vacantCount >= 10 ? 10 : 12;
+  return L.divIcon({
+    className   : '',
+    html        : `<div style="background:${color};width:30px;height:30px;border-radius:5px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:${fs}px;letter-spacing:-0.5px;border:2.5px solid rgba(255,255,255,0.9);box-shadow:0 2px 10px rgba(0,0,0,0.22);">${vacantCount}</div>`,
+    iconSize    : [30, 30], iconAnchor: [15, 15], popupAnchor: [0, -18],
   });
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  Popup
+//  Popup builders
 // ═══════════════════════════════════════════════════════════════
-function makePopup(info, vacancy, vType) {
+function makeCarparkPopup(info, vacancy, vType) {
   const vd     = info[vType];
   const total  = vd?.space ?? 0;
   const color  = vacancyColor(vacancy, total);
@@ -368,40 +670,85 @@ function makePopup(info, vacancy, vType) {
   const isOpen = info.opening_status !== 'CLOSE';
 
   const badges = [];
-  if (info.facilities?.includes('evCharger'))    badges.push('<span style="background:#f0fdf4;color:#166534;border-radius:4px;padding:2px 7px;font-size:11px">⚡ EV</span>');
-  if (info.facilities?.includes('disabilities')) badges.push('<span style="background:#eff6ff;color:#1d4ed8;border-radius:4px;padding:2px 7px;font-size:11px">♿</span>');
+  if (info.facilities?.includes('evCharger'))    badges.push(`<span style="background:#f0fdf4;color:#166534;border-radius:5px;padding:2px 7px;font-size:11px;font-weight:500">⚡ EV</span>`);
+  if (info.facilities?.includes('disabilities')) badges.push(`<span style="background:#eff6ff;color:#1d4ed8;border-radius:5px;padding:2px 7px;font-size:11px;font-weight:500">♿</span>`);
 
   const vcDisplay = vacancy === -1
-    ? `<span style="font-size:18px;color:#9ca3af;font-weight:500">No data</span>`
-    : `<span style="font-size:40px;font-weight:800;line-height:1;color:${color}">${Math.min(vacancy,999)}</span>${total ? `<span style="color:#ccc;font-size:13px;margin-left:5px;align-self:flex-end;margin-bottom:4px">/ ${total}</span>` : ''}`;
+    ? `<span style="font-size:18px;color:#9ca3af;font-weight:500">${t('noVacancy')}</span>`
+    : `<span style="font-size:42px;font-weight:800;line-height:1;color:${color}">${Math.min(vacancy,999)}</span>${total ? `<span style="color:#ccc;font-size:13px;margin-left:5px;align-self:flex-end;margin-bottom:5px">/ ${total}</span>` : ''}`;
 
   const meta = [];
-  if (rate   != null) meta.push(`<span><b>HK$${rate}</b>/hr</span>`);
-  if (height != null) meta.push(`<span>${height}m max</span>`);
-  meta.push(`<span style="color:${isOpen ? '#22c55e' : '#ef4444'}">${isOpen ? '● Open' : '● Closed'}</span>`);
+  if (rate   != null) meta.push(`<b>HK$${rate}</b>${t('perHour')}`);
+  if (height != null) meta.push(`${height}m ${t('maxH')}`);
+  meta.push(`<span style="color:${isOpen?'#22c55e':'#ef4444'}">${isOpen ? t('open') : t('closed')}</span>`);
 
-  return `<div style="font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif;min-width:230px">
-    <div style="font-size:14px;font-weight:700;line-height:1.4;margin-bottom:12px;color:#111;padding-right:16px">${info.name}</div>
+  return `<div style="font-family:-apple-system,BlinkMacSystemFont,'PingFang TC','Helvetica Neue',sans-serif;min-width:230px">
+    <div style="font-size:14px;font-weight:700;line-height:1.4;margin-bottom:12px;color:#111;padding-right:18px">${info.name}</div>
     <div style="display:flex;align-items:center;gap:4px;margin-bottom:10px">${vcDisplay}</div>
-    <div style="display:flex;flex-wrap:wrap;gap:10px;font-size:13px;color:#555;margin-bottom:${badges.length?'10px':'0'}">${meta.join('')}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:10px;font-size:13px;color:#555;margin-bottom:${badges.length?'10px':'2px'}">${meta.join(' · ')}</div>
     ${badges.length ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">${badges.join('')}</div>` : ''}
     <div style="font-size:11px;color:#bbb;border-top:1px solid #f3f4f6;padding-top:8px;line-height:1.7">
-      ${info.displayAddress || info.address?.streetName || ''}${lu ? `<br>Updated ${timeAgo(lu)}` : ''}
+      ${info.displayAddress || info.address?.streetName || ''}${lu ? `<br>${t('updatedFn', timeAgo(lu))}` : ''}
     </div>
   </div>`;
 }
 
+function makeMeterPopup(spaceId, space, occ) {
+  const occupancy = occ?.occupancy;   // 'O', 'V', or undefined
+  const meterOK   = !occ || occ.meterStatus === 'N';
+
+  const statusColor = occupancy === 'V' ? COL.available : occupancy === 'O' ? COL.full : COL.nodata;
+  const statusText  = occupancy === 'V' ? t('vacant') : occupancy === 'O' ? t('occupied') : t('nodata');
+
+  // Rate: PaymentUnit HKD per TimeUnit minutes → HKD/hr
+  const ratePerHr = (space.TimeUnit > 0)
+    ? Math.round((space.PaymentUnit / space.TimeUnit) * 60)
+    : null;
+
+  const district = currentLang === 'zh' ? (space.District_tc || space.District || '') : (space.District || space.District_tc || '');
+  const street   = currentLang === 'zh' ? (space.Street_tc   || space.Street   || '') : (space.Street   || space.Street_tc   || '');
+
+  const maxMin   = space.LPP ?? null;
+  const maxLabel = maxMin ? (currentLang === 'zh' ? `最長${maxMin}分鐘` : `Max ${maxMin} min`) : null;
+
+  const updatedLabel = occ?.updated
+    ? (() => {
+        const d = new Date(occ.updated);
+        return isNaN(d) ? occ.updated : d.toLocaleTimeString(currentLang==='zh'?'zh-HK':'en-HK',{hour:'2-digit',minute:'2-digit'});
+      })()
+    : null;
+
+  const meta = [];
+  if (ratePerHr != null) meta.push(`<b>HK$${ratePerHr}</b>${t('perHour')}`);
+  if (maxLabel)          meta.push(maxLabel);
+
+  return `<div style="font-family:-apple-system,BlinkMacSystemFont,'PingFang TC',sans-serif;min-width:200px">
+    <div style="font-size:13px;font-weight:700;color:#111;margin-bottom:3px">${t('meterTitle')}</div>
+    <div style="font-size:11px;color:#aaa;margin-bottom:12px">${[district,street].filter(Boolean).join(' · ')}</div>
+    <div style="font-size:30px;font-weight:800;color:${statusColor};margin-bottom:10px">${statusText}</div>
+    ${meta.length ? `<div style="font-size:13px;color:#555;margin-bottom:8px">${meta.join(' · ')}</div>` : ''}
+    ${!meterOK ? `<div style="font-size:11px;color:#f59e0b;margin-bottom:6px">⚠ ${currentLang==='zh'?'咪錶異常':'Meter issue'}</div>` : ''}
+    <div style="font-size:11px;color:#ccc">ID: ${spaceId}${updatedLabel ? `<br>${t('updatedFn', updatedLabel)}` : ''}</div>
+  </div>`;
+}
+
 // ═══════════════════════════════════════════════════════════════
-//  Render  — viewport-only, zoom-aware
+//  Render
 // ═══════════════════════════════════════════════════════════════
 function render() {
   if (!map) return;
-  markerLayer.clearLayers();
+  renderCarparks();
+  renderMeters();
+  updateStatus();
+}
 
-  const bounds      = map.getBounds().pad(0.05);
+function renderCarparks() {
+  carparkLayer.clearLayers();
+
+  const bounds      = map.getBounds().pad(0.04);
   const zoom        = map.getZoom();
   const showNumbers = zoom >= ZOOM_NUMBERS;
-  let visible = 0, total = 0;
+  let count = 0;
 
   for (const [pid, info] of Object.entries(infoById)) {
     if (!info.latitude || !info.longitude) continue;
@@ -409,11 +756,9 @@ function render() {
     const hasVacancy = !!vacancyById[pid]?.[currentType];
     if (!vd && !hasVacancy) continue;
     if (vd && vd.space === 0 && !hasVacancy) continue;
-
-    total++;
     if (!bounds.contains([info.latitude, info.longitude])) continue;
-    visible++;
 
+    count++;
     const vacancy  = getVacancy(pid, currentType);
     const totalSpc = vd?.space ?? 0;
     const color    = vacancyColor(vacancy, totalSpc);
@@ -421,29 +766,100 @@ function render() {
 
     const icon   = showNumbers ? makeNumberedIcon(label, color) : makeDotIcon(color);
     const marker = L.marker([info.latitude, info.longitude], { icon });
-    marker.bindPopup(makePopup(info, vacancy, currentType), { maxWidth: 290, minWidth: 240 });
-    markerLayer.addLayer(marker);
+    marker.bindPopup(makeCarparkPopup(info, vacancy, currentType), { maxWidth:280, minWidth:240 });
+    carparkLayer.addLayer(marker);
   }
 
-  const now = new Date().toLocaleTimeString('en-HK', { hour: '2-digit', minute: '2-digit' });
-  document.getElementById('status-text').textContent = `${visible} nearby · ${now}`;
+  return count;
+}
+
+function renderMeters() {
+  meterLayer.clearLayers();
+  if (!map || map.getZoom() < ZOOM_NUMBERS) return;
+
+  const zoom   = map.getZoom();
+  const bounds = map.getBounds().pad(FETCH_PAD);
+
+  if (zoom >= ZOOM_METERS) {
+    // Individual meter dots
+    for (const [id, space] of Object.entries(meterSpaces)) {
+      if (!space.lat || !space.lng || !bounds.contains([space.lat, space.lng])) continue;
+      const occ  = meterOccupancy[id];
+      const icon = makeMeterIcon(occ?.occupancy ?? null);
+      const marker = L.marker([space.lat, space.lng], { icon });
+      marker.bindPopup(makeMeterPopup(id, space, occ), { maxWidth:240, minWidth:200 });
+      meterLayer.addLayer(marker);
+    }
+  } else {
+    // Cluster view: aggregate into ~500m grid cells, show vacant count
+    const CELL = 0.005;
+    const clusters = {};
+    for (const [id, space] of Object.entries(meterSpaces)) {
+      if (!space.lat || !space.lng || !bounds.contains([space.lat, space.lng])) continue;
+      const key = `${Math.floor(space.lat / CELL)},${Math.floor(space.lng / CELL)}`;
+      if (!clusters[key]) clusters[key] = { latSum: 0, lngSum: 0, n: 0, vacant: 0, occupied: 0 };
+      const c = clusters[key];
+      c.latSum += space.lat; c.lngSum += space.lng; c.n++;
+      const occ = meterOccupancy[id]?.occupancy;
+      if (occ === 'V') c.vacant++;
+      else if (occ === 'O') c.occupied++;
+    }
+    for (const c of Object.values(clusters)) {
+      const known = c.vacant + c.occupied;
+      const color = known === 0 ? COL.nodata
+        : c.vacant / known > 0.30 ? COL.available
+        : c.vacant / known > 0.05 ? COL.limited
+        : COL.full;
+      L.marker([c.latSum / c.n, c.lngSum / c.n], { icon: makeMeterClusterIcon(c.vacant, color) })
+        .addTo(meterLayer);
+    }
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════
 //  UI helpers
 // ═══════════════════════════════════════════════════════════════
-function updateZoomHint() {
-  const hint = document.getElementById('zoom-hint');
-  const show = map.getZoom() < ZOOM_NUMBERS;
-  hint.classList.toggle('visible', show);
+function updateStatus() {
+  const bounds  = map.getBounds().pad(0.04);
+  let count = 0;
+  for (const [pid, info] of Object.entries(infoById)) {
+    if (!info.latitude || !info.longitude) continue;
+    const vd         = info[currentType];
+    const hasVacancy = !!vacancyById[pid]?.[currentType];
+    if (!vd && !hasVacancy) continue;
+    if (vd && vd.space === 0 && !hasVacancy) continue;
+    if (bounds.contains([info.latitude, info.longitude])) count++;
+  }
+  const now = new Date().toLocaleTimeString(currentLang === 'zh' ? 'zh-HK' : 'en-HK', { hour:'2-digit', minute:'2-digit' });
+  document.getElementById('status-text').textContent = t('status', count, now);
 }
 
-let hintFadeTimer = null;
+let hintTimer = null;
+function updateZoomHint() {
+  const show = map.getZoom() < ZOOM_NUMBERS;
+  const el   = document.getElementById('zoom-hint');
+  clearTimeout(hintTimer);
+  if (show) {
+    el.classList.add('visible');
+  } else {
+    el.classList.remove('visible');
+  }
+}
+
 function showZoomHintBriefly() {
-  const hint = document.getElementById('zoom-hint');
-  hint.classList.add('visible');
-  clearTimeout(hintFadeTimer);
-  hintFadeTimer = setTimeout(() => hint.classList.remove('visible'), 3000);
+  const el = document.getElementById('zoom-hint');
+  el.classList.add('visible');
+  clearTimeout(hintTimer);
+  hintTimer = setTimeout(() => el.classList.remove('visible'), 3000);
+}
+
+function setLoadingMsg(msg, sub = '') {
+  document.getElementById('loading-msg').textContent = msg;
+  document.getElementById('loading-sub').textContent = sub;
+}
+
+function hideLoading() {
+  document.getElementById('loading-overlay').classList.add('hidden');
 }
 
 function showError(msg) {
@@ -454,23 +870,66 @@ function showError(msg) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+//  Language switching
+// ═══════════════════════════════════════════════════════════════
+function applyLang() {
+  const lang = T[currentLang];
+
+  // Tabs
+  document.querySelectorAll('.v-btn[data-type]').forEach(btn => {
+    btn.textContent = lang.tabs[btn.dataset.type] ?? btn.dataset.type;
+  });
+  document.getElementById('lang-btn').textContent = lang.langToggle;
+
+  // Legend
+  document.getElementById('leg-available').textContent = lang.available;
+  document.getElementById('leg-limited').textContent   = lang.limited;
+  document.getElementById('leg-full').textContent      = lang.full;
+  document.getElementById('leg-nodata').textContent    = lang.nodata;
+
+  // Zoom hint
+  document.getElementById('zoom-hint').textContent = lang.zoomHint;
+
+  // HTML lang attribute
+  document.documentElement.lang = currentLang === 'zh' ? 'zh-Hant' : 'en';
+}
+
+// ═══════════════════════════════════════════════════════════════
 //  Controls
 // ═══════════════════════════════════════════════════════════════
 function setupControls() {
-  document.querySelectorAll('.v-btn').forEach(btn => {
+  document.querySelectorAll('.v-btn[data-type]').forEach(btn => {
     btn.addEventListener('click', () => {
-      document.querySelectorAll('.v-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.v-btn[data-type]').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       currentType = btn.dataset.type;
       render();
     });
   });
 
+  document.getElementById('lang-btn').addEventListener('click', () => {
+    currentLang = currentLang === 'zh' ? 'en' : 'zh';
+    applyLang();
+    render();
+    // Re-fetch info in new language (names change)
+    loadedBounds = null;
+    loadForViewport();
+  });
+
   document.getElementById('locate-btn').addEventListener('click', () => {
-    if (!navigator.geolocation) return showError('Geolocation not supported.');
+    if (!navigator.geolocation) { showError(T[currentLang].locErr); return; }
+    const btn = document.getElementById('locate-btn');
+    btn.classList.add('following');
     navigator.geolocation.getCurrentPosition(
-      ({ coords }) => map.setView([coords.latitude, coords.longitude], ZOOM_START),
-      ()           => showError('Could not get your location.')
+      ({ coords }) => {
+        map.setView([coords.latitude, coords.longitude], ZOOM_START, { animate: true, duration: 0.7 });
+        setTimeout(() => btn.classList.remove('following'), 1500);
+      },
+      () => {
+        showError(T[currentLang].locErr);
+        btn.classList.remove('following');
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
     );
   });
 }
@@ -479,42 +938,46 @@ function setupControls() {
 //  Boot
 // ═══════════════════════════════════════════════════════════════
 async function boot() {
-  const loadingMsg = document.getElementById('loading-msg');
+  applyLang();
+  setLoadingMsg(t('loadingLoc'));
 
-  // 1 — try to get location (6 s timeout, non-blocking)
-  loadingMsg.textContent = 'Finding your location…';
-  const loc = await getLocation();
-  const center = loc ? [loc.lat, loc.lng] : HK_CENTER;
+  // Determine start position: try geolocation first (non-blocking)
+  const locPromise = new Promise(resolve => {
+    if (!navigator.geolocation) { resolve(null); return; }
+    const timer = setTimeout(() => resolve(null), 7000);
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => { clearTimeout(timer); resolve([coords.latitude, coords.longitude]); },
+      ()           => { clearTimeout(timer); resolve(null); }
+    );
+  });
+
+  const loc = await locPromise;
+  const center = loc ?? HK_CENTER;
   const zoom   = loc ? ZOOM_START : ZOOM_HK;
 
   initMap(center, zoom);
   setupControls();
 
-  // 2 — load carpark data
-  loadingMsg.textContent = 'Fetching live parking data…';
-  try {
-    await loadAll();
-    render();
-    if (zoom < ZOOM_NUMBERS) showZoomHintBriefly();
-  } catch (err) {
-    console.error(err);
-    showError('Failed to load parking data — please refresh.');
-  } finally {
-    document.getElementById('loading-overlay').classList.add('hidden');
-  }
+  if (zoom < ZOOM_NUMBERS) showZoomHintBriefly();
 
-  // 3 — refresh vacancy every 60 s
-  refreshTimer = setInterval(async () => {
-    try { await refreshVacancy(); render(); } catch (_) {}
-  }, REFRESH_MS);
+  // Load data for starting viewport
+  setLoadingMsg(t('loadingData'));
+  await loadForViewport();
+  hideLoading();
+
+  // Now start live GPS tracking (updates user dot, doesn't re-pan)
+  startTracking();
+
+  // Periodic vacancy refresh
+  refreshTimer = setInterval(refreshVacancy, REFRESH_MS);
 }
 
-window.addEventListener('DOMContentLoaded', () => {
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
-  }
-  boot();
-});
+// Service worker (PWA)
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(() => {});
+}
+
+window.addEventListener('DOMContentLoaded', boot);
 </script>
 </body>
 </html>
