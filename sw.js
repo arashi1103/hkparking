@@ -1,4 +1,4 @@
-const CACHE = 'hk-parking-v1';
+const CACHE = 'hk-parking-v3';
 const STATIC = [
   '/',
   '/index.html',
@@ -6,6 +6,14 @@ const STATIC = [
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
   'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+];
+
+// All HK government API domains — live data, must never be cached
+const LIVE_DOMAINS = [
+  'api.data.gov.hk',
+  'resource.data.one.gov.hk',
+  'portal.csdi.gov.hk',
+  'data.gov.hk',
 ];
 
 // Install: cache static shell
@@ -25,15 +33,15 @@ self.addEventListener('activate', e => {
 });
 
 // Fetch strategy:
-//   - API calls (carpark data) → network first, no cache (live data)
-//   - Map tiles               → cache first (tiles rarely change)
-//   - Everything else         → cache first, fall back to network
+//   - Government API calls → network only, cache: 'no-store' (live data, never cache)
+//   - Map tiles            → cache first (tiles rarely change)
+//   - Everything else      → cache first, fall back to network
 self.addEventListener('fetch', e => {
   const url = e.request.url;
 
-  // Live API — always network, never cache
-  if (url.includes('api.data.gov.hk')) {
-    e.respondWith(fetch(e.request));
+  // Live government APIs — bypass SW cache entirely so occupancy CSV is always fresh
+  if (LIVE_DOMAINS.some(d => url.includes(d))) {
+    e.respondWith(fetch(e.request, { cache: 'no-store' }));
     return;
   }
 

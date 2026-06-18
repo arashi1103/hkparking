@@ -50,18 +50,7 @@
     .leaflet-popup-content { margin: 16px !important; }
     .leaflet-popup-tip-container { display: none !important; }
     .leaflet-popup-close-button { color: #ccc !important; font-size: 20px !important; top: 10px !important; right: 12px !important; }
-    .leaflet-control-zoom {
-      margin-bottom: 96px !important; margin-right: 16px !important;
-      border: none !important; box-shadow: none !important;
-    }
-    .leaflet-control-zoom a {
-      border-radius: 50% !important; width: 40px !important; height: 40px !important;
-      line-height: 40px !important; box-shadow: 0 2px 14px rgba(0,0,0,0.14) !important;
-      border: none !important; background: rgba(255,255,255,0.97) !important;
-      margin-bottom: 6px !important; color: #222 !important; font-size: 20px !important;
-      display: flex !important; align-items: center !important; justify-content: center !important;
-    }
-    .leaflet-control-zoom-in, .leaflet-control-zoom-out { border-radius: 50% !important; }
+    .leaflet-control-zoom { display: none !important; }  /* pinch-to-zoom only */
     .leaflet-control-attribution { font-size: 9px !important; background: rgba(255,255,255,0.65) !important; }
 
     /* Smooth zoom animations */
@@ -85,14 +74,22 @@
 
     /* ── Top bar: vehicle tabs + lang ── */
     #top-bar {
-      position: fixed; top: env(safe-area-inset-top, 12px); left: 50%;
-      transform: translateX(-50%);
+      position: fixed; top: max(env(safe-area-inset-top, 0px) + 12px, 12px);
+      left: 50%; transform: translateX(-50%);
       z-index: 1000;
       border-radius: 50px; padding: 5px;
-      display: flex; align-items: center; gap: 2px;
+      display: flex; align-items: center;
       max-width: calc(100vw - 32px);
+      overflow: hidden;  /* clip the inner scroll area */
     }
-    #top-bar { top: max(env(safe-area-inset-top, 0px) + 12px, 12px); }
+    /* Scrollable tabs strip — only the vehicle buttons scroll */
+    #tabs-scroll {
+      display: flex; align-items: center; gap: 2px;
+      overflow-x: auto; -webkit-overflow-scrolling: touch;
+      scrollbar-width: none; -ms-overflow-style: none;
+      flex: 1; min-width: 0;
+    }
+    #tabs-scroll::-webkit-scrollbar { display: none; }
 
     .v-btn {
       padding: 8px 14px; border: none; border-radius: 50px;
@@ -183,7 +180,7 @@
     /* ── Zoom hint ── */
     #zoom-hint {
       position: fixed;
-      bottom: max(env(safe-area-inset-bottom, 0px) + 118px, 118px);
+      bottom: max(env(safe-area-inset-bottom, 0px) + 90px, 90px);
       left: 50%; transform: translateX(-50%);
       z-index: 1000;
       background: rgba(28,25,23,0.82); color: #fff;
@@ -198,7 +195,7 @@
     /* ── Locate button ── */
     #locate-btn {
       position: fixed;
-      bottom: max(env(safe-area-inset-bottom, 0px) + 130px, 130px);
+      bottom: max(env(safe-area-inset-bottom, 0px) + 100px, 100px);
       right: 14px; z-index: 1000;
       border: none; border-radius: 50%;
       width: 44px; height: 44px;
@@ -271,11 +268,13 @@
 <div id="map"></div>
 
 <div id="top-bar" class="glass">
-  <button class="v-btn active" data-type="privateCar" id="btn-car">私家車</button>
-  <button class="v-btn" data-type="motorCycle" id="btn-moto">電單車</button>
-  <button class="v-btn" data-type="LGV" id="btn-lgv">輕貨</button>
-  <button class="v-btn" data-type="HGV" id="btn-hgv">重貨</button>
-  <button class="v-btn" data-type="coach" id="btn-coach">旅巴</button>
+  <div id="tabs-scroll">
+    <button class="v-btn active" data-type="privateCar" id="btn-car">私家車</button>
+    <button class="v-btn" data-type="motorCycle" id="btn-moto">電單車</button>
+    <button class="v-btn" data-type="LGV" id="btn-lgv">輕貨</button>
+    <button class="v-btn" data-type="HGV" id="btn-hgv">重貨</button>
+    <button class="v-btn" data-type="coach" id="btn-coach">旅巴</button>
+  </div>
   <button class="v-btn" id="lang-btn">EN</button>
 </div>
 
@@ -353,6 +352,7 @@ const T = {
     updatedFn: (t) => `${t}前更新`,
     justNow:'剛剛', minAgoFn:(m)=>`${m}分鐘前`, hrAgoFn:(h)=>`${h}小時前`,
     meterTitle:'咪錶泊車位', occupied:'已佔用', vacant:'空置',
+    directions:'導航前往',
     nearby:'附近', locErr:'無法取得位置', dataErr:'載入資料失敗，請重試',
     status: (n,t) => `${n}個停車場 · ${t}`,
   },
@@ -371,6 +371,7 @@ const T = {
     updatedFn: (t) => `Updated ${t}`,
     justNow:'just now', minAgoFn:(m)=>`${m}m ago`, hrAgoFn:(h)=>`${h}h ago`,
     meterTitle:'Parking Meter', occupied:'Occupied', vacant:'Vacant',
+    directions:'Get Directions',
     nearby:'nearby', locErr:'Location unavailable', dataErr:'Failed to load data',
     status: (n,t) => `${n} lots · ${t}`,
   },
@@ -388,10 +389,22 @@ const METER_OCC_CSV = 'https://resource.data.one.gov.hk/td/psiparkingspaces/occu
 const HK_CENTER    = [22.3193, 114.1694];
 const ZOOM_START   = 16;
 const ZOOM_HK      = 12;
-const ZOOM_NUMBERS = 14;   // show counts above this zoom
-const ZOOM_METERS  = 16;   // show meter dots above this zoom
-const REFRESH_MS   = 60_000;
-const RENDER_DELAY = 120;  // debounce ms
+const ZOOM_NUMBERS    = 14;   // show carpark counts above this zoom
+const ZOOM_METER_LOAD = 15;   // fetch + show meters above this zoom (keeps bounds < 3 000 spaces)
+const ZOOM_METERS     = 16;   // switch from meter clusters to individual dots
+const REFRESH_MS      = 60_000;
+const RENDER_DELAY    = 120;  // debounce ms
+
+// Vehicle type matching terms for ArcGIS VehicleType field.
+// Short codes (≤3 chars) are matched exactly; longer strings use includes().
+// Covers both abbreviated codes (P, M, LGV…) and full English/Chinese labels.
+const METER_VEHICLE_MAP = {
+  privateCar : ['p', 'pc', 'private', 'car', '私家'],
+  motorCycle : ['m', 'mc', 'moto', 'motor', 'cycle', '電單'],
+  LGV        : ['lgv', 'light'],
+  HGV        : ['hgv', 'heavy'],
+  coach      : ['c', 'cb', 'coach', 'bus', '旅'],
+};
 
 const COL = { available:'#22c55e', limited:'#f59e0b', full:'#ef4444', nodata:'#9ca3af' };
 
@@ -447,7 +460,7 @@ function initMap(center, zoom) {
     subdomains: 'abcd', maxZoom: 20,
   }).addTo(map);
 
-  L.control.zoom({ position: 'bottomright' }).addTo(map);
+  // Zoom control hidden — users pinch to zoom on mobile
 
   userLayer   = L.layerGroup().addTo(map);
   meterLayer  = L.layerGroup().addTo(map);
@@ -568,8 +581,8 @@ async function loadForViewport() {
     dataLoaded = true;
     render();
 
-    // Load parking meters at same zoom as carpark numbers
-    if (map.getZoom() >= ZOOM_NUMBERS) loadMeters(bounds);
+    // Load parking meters only when zoomed in enough to stay under the 3 000-record cap
+    if (map.getZoom() >= ZOOM_METER_LOAD) loadMeters(bounds);
   } catch (err) {
     console.error('Load failed:', err);
     showError(t('dataErr'));
@@ -584,7 +597,19 @@ async function maybeLoadMore() {
   if (!loadedBounds || !loadedBounds.contains(bounds)) {
     await loadForViewport();
   }
-  if (map.getZoom() >= ZOOM_NUMBERS) loadMeters(bounds);
+  if (map.getZoom() >= ZOOM_METER_LOAD) loadMeters(bounds);
+}
+
+// Drop meter spaces that have drifted outside a generous buffer around the current view.
+// Called only when loadMeters is about to do a real network fetch, keeping memory bounded
+// without triggering unnecessary re-fetches on minor pans.
+function pruneStaleMeters() {
+  const keep = map.getBounds().pad(0.08);
+  for (const [id, space] of Object.entries(meterSpaces)) {
+    if (!keep.contains([space.lat, space.lng])) delete meterSpaces[id];
+  }
+  // meterBounds is NOT reset here — loadMeters will naturally re-fetch because
+  // its own contains() check fails when the user is in genuinely new territory.
 }
 
 async function refreshVacancy() {
@@ -608,6 +633,9 @@ async function refreshVacancy() {
 async function loadMeters(bounds) {
   // Skip if we already have data for a superset of this area
   if (meterBounds && meterBounds.contains(bounds)) { renderMeters(); return; }
+
+  // Prune stale spaces before fetching so memory stays bounded
+  pruneStaleMeters();
 
   try {
     const params = new URLSearchParams({
@@ -772,6 +800,20 @@ function makeMeterClusterIcon(vacantCount, color) {
 // ═══════════════════════════════════════════════════════════════
 //  Popup builders
 // ═══════════════════════════════════════════════════════════════
+function directionsUrl(lat, lng) {
+  // Apple Maps on iOS/iPadOS, Google Maps everywhere else
+  if (/iPhone|iPad|iPod/.test(navigator.userAgent)) {
+    return `maps://maps.apple.com/?daddr=${lat},${lng}`;
+  }
+  return `https://maps.google.com/maps?daddr=${lat},${lng}`;
+}
+function directionsLink(lat, lng) {
+  return `<a href="${directionsUrl(lat, lng)}" target="_blank" rel="noopener noreferrer"
+    style="display:inline-flex;align-items:center;gap:4px;margin-top:10px;font-size:12px;
+    color:#3b82f6;text-decoration:none;font-weight:500;-webkit-tap-highlight-color:transparent">
+    ${t('directions')} ↗
+  </a>`;
+}
 function makeCarparkPopup(info, vacancy, vType) {
   const vd     = info[vType];
   const total  = vd?.space ?? 0;
@@ -802,6 +844,7 @@ function makeCarparkPopup(info, vacancy, vType) {
     <div style="font-size:11px;color:#bbb;border-top:1px solid #f3f4f6;padding-top:8px;line-height:1.7">
       ${info.displayAddress || info.address?.streetName || ''}${lu ? `<br>${t('updatedFn', timeAgo(lu))}` : ''}
     </div>
+    ${directionsLink(info.latitude, info.longitude)}
   </div>`;
 }
 
@@ -841,6 +884,7 @@ function makeMeterPopup(spaceId, space, occ) {
     ${meta.length ? `<div style="font-size:13px;color:#555;margin-bottom:8px">${meta.join(' · ')}</div>` : ''}
     ${!meterOK ? `<div style="font-size:11px;color:#f59e0b;margin-bottom:6px">⚠ ${currentLang==='zh'?'咪錶異常':'Meter issue'}</div>` : ''}
     <div style="font-size:11px;color:#ccc">ID: ${spaceId}${updatedLabel ? `<br>${t('updatedFn', updatedLabel)}` : ''}</div>
+    ${directionsLink(space.lat, space.lng)}
   </div>`;
 }
 
@@ -885,9 +929,30 @@ function renderCarparks() {
   return count;
 }
 
+// Returns true if a meter space applies to the currently selected vehicle type.
+// Short codes (≤3 chars) use exact equality; longer labels use substring match.
+// Unknown codes are shown by default (safe fallback).
+function meterMatchesType(space) {
+  const vt = (space.VehicleType || '').trim();
+  if (!vt) return true;
+  const vtLow = vt.toLowerCase();
+
+  function hits(terms) {
+    return terms.some(term => term.length <= 3 ? vtLow === term : vtLow.includes(term));
+  }
+
+  if (hits(METER_VEHICLE_MAP[currentType] || [])) return true;
+
+  // If it positively matches a different type, exclude it; otherwise show it
+  for (const [key, terms] of Object.entries(METER_VEHICLE_MAP)) {
+    if (key !== currentType && hits(terms)) return false;
+  }
+  return true; // unknown code — show rather than hide
+}
+
 function renderMeters() {
   meterLayer.clearLayers();
-  if (!map || map.getZoom() < ZOOM_NUMBERS) return;
+  if (!map || map.getZoom() < ZOOM_NUMBERS) return;  // render from zoom 14, fetch from zoom 15
 
   const zoom   = map.getZoom();
   const bounds = map.getBounds().pad(FETCH_PAD);
@@ -896,6 +961,7 @@ function renderMeters() {
     // Individual meter dots
     for (const [id, space] of Object.entries(meterSpaces)) {
       if (!space.lat || !space.lng || !bounds.contains([space.lat, space.lng])) continue;
+      if (!meterMatchesType(space)) continue;
       const occ  = meterOccupancy[id];
       const icon = makeMeterIcon(occ?.occupancy ?? null);
       const marker = L.marker([space.lat, space.lng], { icon });
@@ -908,6 +974,7 @@ function renderMeters() {
     const clusters = {};
     for (const [id, space] of Object.entries(meterSpaces)) {
       if (!space.lat || !space.lng || !bounds.contains([space.lat, space.lng])) continue;
+      if (!meterMatchesType(space)) continue;
       const key = `${Math.floor(space.lat / CELL)},${Math.floor(space.lng / CELL)}`;
       if (!clusters[key]) clusters[key] = { latSum: 0, lngSum: 0, n: 0, vacant: 0, occupied: 0 };
       const c = clusters[key];
